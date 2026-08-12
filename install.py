@@ -7,6 +7,7 @@ evidence itself is always written per-workspace, under <project>/.evidence/ — 
 install location only holds the code + default config, never evidence.
 
   python install.py                 # install (or re-install/update) to ~/.claude
+  python install.py --check         # compare installed vs. source version, change nothing
   python install.py --update        # git pull the repo, then re-install code/commands/hooks
   python install.py --dir DIR       # install to a different Claude config dir
   python install.py --python PATH   # bake a specific interpreter into hooks
@@ -25,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -37,9 +39,22 @@ SRC_COMMANDS = SRC / "commands"
 HOOK_SCRIPT = "evidence_capture.py"
 COMMAND_GLOB = "evidence-*.md"
 
+_VERSION_RE = re.compile(r'TOOL_VERSION\s*=\s*"([^"]+)"')
+
 
 def _q(path) -> str:
     return f'"{path}"'
+
+
+def _read_version(evidence_core_path: Path) -> str | None:
+    """Read TOOL_VERSION out of an evidence_core.py by regex — no import, so
+    this works against both the source checkout and an already-installed copy
+    without needing either on sys.path."""
+    try:
+        m = _VERSION_RE.search(evidence_core_path.read_text(encoding="utf-8"))
+        return m.group(1) if m else None
+    except OSError:
+        return None
 
 
 def _clear_pycache(directory: Path) -> None:
@@ -91,6 +106,8 @@ def install(claude_dir: Path, py: str, deps: bool, force_config: bool = False) -
     commands_dir = claude_dir / "commands"
     settings_path = claude_dir / "settings.json"
     updating = evidence_dir.exists()
+    old_version = _read_version(evidence_dir / "evidence_core.py") if updating else None
+    new_version = _read_version(SRC_EVIDENCE / "evidence_core.py")
     evidence_dir.mkdir(parents=True, exist_ok=True)
     commands_dir.mkdir(parents=True, exist_ok=True)
 
@@ -143,8 +160,16 @@ def install(claude_dir: Path, py: str, deps: bool, force_config: bool = False) -
         except (subprocess.CalledProcessError, OSError) as exc:
             dep_note = f"FAILED ({exc}) — capture still works; run pip install -r {req} for report rendering"
 
+    if not updating:
+        version_note = f"{new_version} (fresh install)"
+    elif old_version == new_version:
+        version_note = f"{new_version} (unchanged — see CHANGELOG.md)"
+    else:
+        version_note = f"{old_version or '?'} -> {new_version}"
+
     print(f"Evidence tool {'updated' if updating else 'installed'}.")
     print(f"  claude dir: {claude_dir}")
+    print(f"  version:    {version_note}")
     print(f"  code:       {evidence_dir}  ({cfg_note})")
     print(f"  commands:   {commands_dir}  ({n_cmd} slash commands)")
     print(f"  hooks:      {settings_path}  (PostToolUse: Bash + mcp__.*)")
@@ -154,6 +179,24 @@ def install(claude_dir: Path, py: str, deps: bool, force_config: bool = False) -
     print("Restart Claude Code so it loads the new hooks + commands, then in any project:")
     print("  /evidence-on <engagement>  ->  work  ->  /evidence-report  ->  /evidence-off")
     print("Evidence is written under <that project>/.evidence/ -- never in the install dir.")
+
+
+def check(claude_dir: Path) -> None:
+    """Dry-run: report installed vs. source version, change nothing. The way to
+    find out an update is available without a network call — this repo has no
+    telemetry/update-check, you decide when to `git pull` / `--update`."""
+    evidence_dir = claude_dir / "evidence"
+    src_version = _read_version(SRC_EVIDENCE / "evidence_core.py")
+    installed_version = _read_version(evidence_dir / "evidence_core.py") if evidence_dir.exists() else None
+
+    print(f"source checkout:  {src_version or 'unknown'}  ({SRC})")
+    if installed_version is None:
+        print(f"installed ({claude_dir}): not installed — run `python install.py`")
+    elif installed_version == src_version:
+        print(f"installed ({claude_dir}): {installed_version}  — up to date")
+    else:
+        print(f"installed ({claude_dir}): {installed_version}  — {src_version} available, run `python install.py`")
+    print("See CHANGELOG.md for what changed between versions.")
 
 
 def uninstall(claude_dir: Path) -> None:
@@ -184,10 +227,13 @@ def main(argv=None):
     ap.add_argument("--force-config", action="store_true", help="Overwrite evidence.config.json (backs up the old one)")
     ap.add_argument("--no-deps", action="store_true", help="Skip pip install of Pillow/Pygments")
     ap.add_argument("--uninstall", action="store_true", help="Remove the tool")
+    ap.add_argument("--check", action="store_true", help="Compare installed vs. source version; change nothing")
     args = ap.parse_args(argv)
 
     claude_dir = Path(args.dir).expanduser()
-    if args.uninstall:
+    if args.check:
+        check(claude_dir)
+    elif args.uninstall:
         uninstall(claude_dir)
     else:
         if args.update and not args.no_pull:

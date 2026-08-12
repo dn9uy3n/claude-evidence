@@ -8,10 +8,11 @@ even though the tool itself is installed once (globally).
 
   on [engagement]        arm capture; create <ws>/.evidence/<engagement>/<session>/
   off                    verify chain, seal manifest.json, stop capturing
-  status                 enabled? engagement, counts, chain integrity
+  status                 enabled? engagement, counts, chain integrity, version
   note <seq> "<label>"   annotate a step (optionally --attack Txxxx)
   map                    regenerate map.md
   report [--format md]   build the Markdown report
+  version                print the installed tool version (see CHANGELOG.md)
 """
 
 from __future__ import annotations
@@ -117,8 +118,14 @@ def cmd_off(args) -> int:
     return 0
 
 
+def cmd_version(args) -> int:
+    print(core.TOOL_VERSION)
+    return 0
+
+
 def cmd_status(args) -> int:
     state = core.load_state(WORKSPACE)
+    print(f"version:    {core.TOOL_VERSION}")
     print(f"workspace:  {WORKSPACE}")
     print(f"enabled:    {state.get('enabled', False)}")
     print(f"engagement: {state.get('engagement')}")
@@ -200,6 +207,8 @@ def build_parser():
     s = sub.add_parser("report")
     s.add_argument("--format", default="md", choices=["md"])
     s.set_defaults(func=cmd_report)
+
+    sub.add_parser("version").set_defaults(func=cmd_version)
     return p
 
 

@@ -1,5 +1,7 @@
 # claude-evidence
 
+**Current version: 0.2.0** — see [CHANGELOG.md](CHANGELOG.md) for release notes; releases are tagged `v<version>` on GitHub.
+
 Automatic evidence capture for **Claude Code**, built for authorized pentest / red-team engagements.
 
 Once armed with a slash command, every `Bash` call and every MCP tool call in the current project is recorded as **tamper-evident evidence** — raw command + output as the source of truth, plus **real pixel screenshots** harvested from image-producing MCPs. It auto-builds a scannable `map.md` index and, on demand, a report-ready Markdown deliverable with a client-verifiable hash.
@@ -49,6 +51,16 @@ python install.py --force-config   # also refresh evidence.config.json (old one 
 ```
 
 Restart Claude Code after an update so it reloads the hook + commands. Stale `.pyc` files are cleared automatically; per-project `.evidence/` stores are never touched.
+
+### Finding out if an update is available
+
+No network calls / telemetry — you decide when to check.
+
+```bash
+python install.py --check              # compare installed vs. this checkout's version, change nothing
+python evidence/evidence_ctl.py version # what's in this checkout
+```
+Inside Claude Code, `/evidence-status` also shows the currently-installed version. Compare against [CHANGELOG.md](CHANGELOG.md) / the repo's [tags](https://github.com/dn9uy3n/claude-evidence/tags) to see what's newer, then `git pull` (or `python install.py --update`) to get it.
 
 ## Use
 

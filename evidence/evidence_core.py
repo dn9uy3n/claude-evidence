@@ -25,6 +25,12 @@ from pathlib import Path
 
 # --- Install location (where the tool's own files live) ------------------
 
+# Bump on every release; install.py reads this (by regex, no import) to compare
+# an already-installed copy against the source checkout before overwriting, and
+# `evidence_ctl.py version` / `/evidence-status` surface it to the user. See
+# CHANGELOG.md for what changed at each version; releases are tagged v<version>.
+TOOL_VERSION = "0.2.0"
+
 TOOL_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = TOOL_DIR / "evidence.config.json"
 
