@@ -1,25 +1,17 @@
 # claude-evidence
 
-**Current version: 0.2.0** — see [CHANGELOG.md](CHANGELOG.md) for release notes; releases are tagged `v<version>` on GitHub.
+Auto-captures every `Bash` and MCP tool call in **Claude Code** as tamper-evident evidence for pentest / red-team reports — command + output, real screenshots, hash-chained, one command to a Markdown report.
 
-Automatic evidence capture for **Claude Code**, built for authorized pentest / red-team engagements.
+**v0.2.0** — [CHANGELOG.md](CHANGELOG.md) for release notes, tags for versions.
 
-Once armed with a slash command, every `Bash` call and every MCP tool call in the current project is recorded as **tamper-evident evidence** — raw command + output as the source of truth, plus **real pixel screenshots** harvested from image-producing MCPs. It auto-builds a scannable `map.md` index and, on demand, a report-ready Markdown deliverable with a client-verifiable hash.
-
-It is built to sit **underneath your AI security tooling** — the browser agents, desktop drivers, and offensive scanners you already drive through Claude Code — and turn their output into evidence with zero copy-paste. First-class support for [Playwright MCP](https://github.com/microsoft/playwright-mcp), [Windows-MCP](https://github.com/CursorTouch/Windows-MCP), and [HexStrike AI](https://github.com/0x4m4/hexstrike-ai); the generic `mcp__.*` hook captures every other MCP server too. See [Works with your AI tooling](#works-with-your-ai-tooling).
-
-- **Installed once, globally** (`~/.claude/`) → the hook + `/evidence-*` commands work in every project.
-- **Evidence stored per-workspace** → each project/session writes to its own `<project>/.evidence/`. The install location never holds evidence.
-- **Integrity by SHA-256 hash chain** → any edit, deletion, or reorder of a step breaks the chain and is reported.
-- **Pure standard library on the capture path** → arming never fails on a missing dependency. Pillow + Pygments are needed only to render the report.
-
-> The store keeps **raw, unredacted** evidence by design. Redaction is the operator's step before a report leaves your hands. `.evidence/` is auto-added to the project's `.gitignore`.
+- Arm with `/evidence-on`, everything after is captured automatically. No copy-paste.
+- Works with Playwright, Windows-MCP, HexStrike AI out of the box; any other MCP too (generic `mcp__.*` hook).
+- SHA-256 hash chain — any edit/delete/reorder of a step is detectable.
+- Installed once globally; evidence stored per-project under `<project>/.evidence/` (auto-gitignored, raw/unredacted — redact before the report leaves your hands).
 
 ---
 
 ## Install
-
-Requires Python 3.9+.
 
 ```bash
 git clone https://github.com/dn9uy3n/claude-evidence
@@ -27,132 +19,81 @@ cd claude-evidence
 python install.py
 ```
 
-This copies the engine to `~/.claude/evidence/`, writes the 8 `/evidence-*` slash commands to `~/.claude/commands/`, merges a `PostToolUse` hook (matchers `Bash` and `mcp__.*`) into `~/.claude/settings.json`, and pip-installs Pillow + Pygments.
-
-Then **restart Claude Code** so it loads the new hooks and commands.
-
-Options:
+Copies the engine + 8 `/evidence-*` commands to `~/.claude/`, wires the capture hook into `settings.json`, installs Pillow + Pygments (for report rendering). **Restart Claude Code** after.
 
 ```bash
-python install.py --dir /path/to/.claude   # install to a non-default Claude dir
-python install.py --python /path/to/python # bake a specific interpreter into the hook
-python install.py --no-deps                # skip Pillow/Pygments (report rendering off)
-python install.py --uninstall              # remove hook + commands + code (keeps evidence)
+python install.py --dir /path/to/.claude   # different Claude dir
+python install.py --no-deps                # skip Pillow/Pygments
+python install.py --uninstall              # remove (keeps evidence)
 ```
 
 ## Update
 
-Re-running the installer **is** the update — it overwrites the installed code + slash commands and re-merges the hook idempotently (no duplicates). Your edited `evidence.config.json` is preserved unless you ask for it back.
+Re-running the installer **is** the update — overwrites code/commands, re-merges the hook (no dupes), keeps your `evidence.config.json`.
 
 ```bash
-python install.py            # push the current working tree into the install dir (local edits)
-python install.py --update   # git pull this repo first, then re-install
-python install.py --force-config   # also refresh evidence.config.json (old one saved to .bak)
+python install.py --check    # compare installed vs. checkout version, changes nothing
+python install.py --update   # git pull, then re-install
 ```
-
-Restart Claude Code after an update so it reloads the hook + commands. Stale `.pyc` files are cleared automatically; per-project `.evidence/` stores are never touched.
-
-### Finding out if an update is available
-
-No network calls / telemetry — you decide when to check.
-
-```bash
-python install.py --check              # compare installed vs. this checkout's version, change nothing
-python evidence/evidence_ctl.py version # what's in this checkout
-```
-Inside Claude Code, `/evidence-status` also shows the currently-installed version. Compare against [CHANGELOG.md](CHANGELOG.md) / the repo's [tags](https://github.com/dn9uy3n/claude-evidence/tags) to see what's newer, then `git pull` (or `python install.py --update`) to get it.
 
 ## Use
 
-In any project, inside Claude Code:
-
 ```
-/evidence-on acme-corp-q1-2026        # arm capture for this workspace
-   ... do the engagement — Bash + MCP calls are recorded automatically ...
+/evidence-on acme-corp-q1-2026        # arm capture for this project
+   ... work — Bash + MCP calls captured automatically ...
 /evidence-snap-web https://target/app --note "IDOR user 4412"
 /evidence-note 7 "thick-client after exploit" --attack T1190
-/evidence-status                      # armed? counts, chain integrity
-/evidence-map                         # (re)generate the map.md index
+/evidence-status                      # armed? counts, chain OK?
 /evidence-report                      # build the Markdown report
 /evidence-off                         # verify chain, seal manifest, stop
 ```
 
-| Command | What it does |
+| Command | Does |
 |---|---|
-| `/evidence-on [name]` | Arm capture; create `<project>/.evidence/<name>/<session>/`. |
-| `/evidence-off` | Verify the chain, seal `manifest.json`, stop recording. |
-| `/evidence-status` | Armed? engagement, step/screenshot counts, chain integrity. |
-| `/evidence-note <seq> "<label>" [--attack Txxxx]` | Annotate a step (mutable, outside the chain). |
-| `/evidence-map` | Regenerate `map.md` (screenshots pick-list + full timeline). |
-| `/evidence-report [--format md]` | Build the Markdown report + rendered PNGs. |
-| `/evidence-snap-web <url> [--selector css] [--note ..]` | Drive Playwright to screenshot a page (auto-harvested). |
-| `/evidence-snap-desktop [--display 0] [--note ..]` | Drive Windows-MCP to screenshot the desktop (auto-harvested). |
+| `/evidence-on [name]` | Arm capture for this project |
+| `/evidence-off` | Verify chain, seal manifest, stop |
+| `/evidence-status` | Armed? counts, chain integrity, version |
+| `/evidence-note <seq> "<label>" [--attack Txxxx]` | Annotate a step |
+| `/evidence-map` | Regenerate `map.md` index |
+| `/evidence-report` | Build the Markdown report |
+| `/evidence-snap-web <url>` | Playwright screenshot |
+| `/evidence-snap-desktop` | Windows-MCP screenshot |
 
 ## Works with your AI tooling
 
-The point of this tool is that your offensive work already flows through MCP servers — a headless browser here, a desktop driver there, a farm of scanners somewhere else. This hook sits under all of them: whatever tool you drive, its command, structured result, and any screenshot become evidence automatically — not just a "an MCP call happened" log line.
-
-**Tool matching is by short name, not full server-qualified name.** The same underlying tool gets mounted under different server keys depending on install (`windows-mcp`, `windows-deus`, `windows-bighost`; `hexstrike-ai`, `hexstrike_ai`, ...) — `claude mcp add <key> -- ...` picks the key, and it varies per machine. So config patterns like `Screenshot`, `PowerShell` match the tool name *after the last `__`*, regardless of server key — no per-install config editing needed. A pattern starting with `mcp__` still scopes to one exact server if you need that.
-
-| MCP tool | Repo | What it produces | Captured as |
-|---|---|---|---|
-| **Playwright MCP** | [microsoft/playwright-mcp](https://github.com/microsoft/playwright-mcp) | `browser_take_screenshot` (saved file path), `browser_snapshot` (a11y tree), `browser_network_requests`, `browser_evaluate` | real PNG via **filepath** harvest; network/evaluate steps flagged ⚠️ (may carry tokens/cookies) |
-| **Windows-MCP** | [CursorTouch/Windows-MCP](https://github.com/CursorTouch/Windows-MCP) | `Screenshot`/`Snapshot` (base64 desktop image), `PowerShell`, `Registry`, `Clipboard`, UI actions | real PNG via **base64** harvest; `PowerShell`/`Registry`/`Clipboard` logged as commands, flagged ⚠️ |
-| **HexStrike AI** | [0x4m4/hexstrike-ai](https://github.com/0x4m4/hexstrike-ai) | 100+ tools (`nmap_scan`, `nuclei_scan`, `sqlmap_scan`, `ghidra_analysis`, `volatility_analyze`, …) — no screenshot tool of its own, browser evidence comes via Playwright | any list-of-record JSON response auto-renders as a **real Markdown table** — not a name allowlist, works for any tool that returns tabular data |
-| **any other MCP** | — | RedTech recon graph, WireMCP PCAP, Jadx / ILSpy / Binary Ninja RE, SSH, … | same generic-table + full `tool_input`/`tool_response` capture, chained like everything else |
-
-**Connect the tools** (then run `/mcp` to confirm each server's exact key — the short-name matching above means it usually doesn't matter):
+| Tool | Captured as |
+|---|---|
+| [Playwright MCP](https://github.com/microsoft/playwright-mcp) | real PNG screenshots; network/JS-eval steps flagged ⚠️ (may carry tokens) |
+| [Windows-MCP](https://github.com/CursorTouch/Windows-MCP) | real PNG screenshots; `PowerShell`/`Registry`/`Clipboard` logged + flagged ⚠️ |
+| [HexStrike AI](https://github.com/0x4m4/hexstrike-ai) | any list-shaped JSON response (scan results, findings) → real Markdown table |
+| any other MCP | full command + response, hash-chained like everything else |
 
 ```bash
-# Playwright MCP — real browser screenshots
 claude mcp add playwright -- npx @playwright/mcp@latest
-npx playwright install chromium
-
-# Windows-MCP — real desktop screenshots + PowerShell (2K/4K: set WINDOWS_MCP_SCREENSHOT_SCALE=0.5)
 claude mcp add --transport stdio windows-mcp -- uvx windows-mcp serve
-
-# HexStrike AI — offensive scanner farm (server process + MCP bridge)
-python3 hexstrike-ai/hexstrike_server.py --port 8888
-claude mcp add --transport stdio hexstrike-ai -- python3 hexstrike-ai/hexstrike_mcp.py --server http://localhost:8888
+claude mcp add --transport stdio hexstrike-ai -- python3 hexstrike_mcp.py --server http://localhost:8888
 ```
-
-You capture screenshots either passively (just call the tool — the hook harvests the result) or explicitly with `/evidence-snap-web` (Playwright) and `/evidence-snap-desktop` (Windows-MCP). A failed tool call is evidence too: the record is still written so gaps in an engagement are visible.
-
-**Sensitive-data hints.** Steps from tools that commonly carry secrets — `PowerShell`, `Registry`, `Clipboard`, `browser_network_requests`, `browser_evaluate`, `execute_command`, `execute_python_script` — get a ⚠️ marker in `map.md` and a callout in the report, as a reminder to check before the raw evidence leaves your hands. Configurable via `sensitive_hint_tools`.
 
 ## What lands on disk
 
 ```
-<project>/.evidence/
-├── state.json                         # armed? which session (per workspace)
-└── <engagement>/
-    ├── manifest.json                  # sealed final hash (on /evidence-off)
-    └── <session_id>/
-        ├── log.jsonl                  # SOURCE OF TRUTH — append-only, hash-chained
-        ├── head.json                  # chain head {seq, record_sha256}
-        ├── map.md                     # human index (auto-regenerated)
-        ├── annotations.json           # your labels (mutable, outside the chain)
-        ├── steps/     0001-Bash.txt · 0002-nmap_scan.txt · …
-        ├── artifacts/ 0003-browser_take_screenshot.png · …   (real screenshots)
-        └── report/    report.md + img/*.png                  (on /evidence-report)
+<project>/.evidence/<engagement>/<session_id>/
+├── log.jsonl          # source of truth — append-only, hash-chained
+├── map.md             # auto-regenerated index (screenshots + full timeline)
+├── annotations.json   # your labels/ATT&CK tags (mutable, outside the chain)
+├── steps/             # raw text per step
+├── artifacts/         # real screenshots
+└── report/            # report.md + rendered PNGs (on /evidence-report)
 ```
-
-## How it works
-
-- A global `PostToolUse` hook runs `evidence_capture.py` after **every** tool call. It resolves the workspace from the call's `cwd`, reads that workspace's `.evidence/state.json`, and is a fast no-op unless capture was armed there.
-- When armed, under a cross-platform file lock it reserves a sequence number, dumps the full raw step text to `steps/`, harvests any real screenshot to `artifacts/`, and appends a hash-chained record to `log.jsonl` — `record_sha256 = sha256(prev_sha256 + canonical_json(record))`.
-- `map.md` is regenerated after each capture from `log.jsonl` + `annotations.json`.
-- `/evidence-report` renders each step's command/output to a PNG (Pillow + Pygments, with an ANSI-color path for scanner output like nmap/sqlmap) and embeds the real screenshots, headed by the manifest / chain hash.
 
 ## Configuration
 
-Defaults live in `~/.claude/evidence/evidence.config.json` and are preserved across re-installs. A project may override any top-level key with `<project>/.evidence/evidence.config.json`. Notable keys: `capture` (toggle bash/mcp/screenshots), `map.regenerate_on_capture`, `image_producing_tools` (which tools yield screenshots and how — `filepath` / `base64` / `auto`, matched by short name), `command_producing_mcp_tools` (e.g. `PowerShell`), `sensitive_hint_tools` (steps to flag ⚠️ for redaction review). Pattern keys match the short tool name by default; prefix a pattern with `mcp__` to scope it to one exact server instead.
+`~/.claude/evidence/evidence.config.json` (global default, survives re-installs) — override per-project with `<project>/.evidence/evidence.config.json`. Main keys: `capture` (bash/mcp/screenshots on-off), `image_producing_tools`, `sensitive_hint_tools`. Pattern keys match short tool names; prefix with `mcp__` to scope to one server.
 
 ## Notes
 
-- **Not connected yet ≠ unsupported.** The `mcp__.*` matcher captures every MCP regardless of whether it's connected this session; short-name matching means screenshots/tables/tagging work the moment a matching tool is added, with no config edits.
-- **Windows / macOS / Linux.** Integrity is the hash chain (portable); on Linux you may additionally `chattr +a log.jsonl`, on Windows use an `icacls` deny-write ACL, for OS-level append-only hardening.
-- Not a replacement for git history — file contents at a point in time come from git, not from this log.
+- Cross-platform (Windows/macOS/Linux). Optional hardening: `chattr +a log.jsonl` (Linux) or an `icacls` deny-write ACL (Windows).
+- Not a replacement for git history — recover file contents from git, not this log.
 
 ## License
 
