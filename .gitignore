@@ -1,0 +1,17 @@
+# Private Claude Code config/skills/rules for this machine (NOT the distributable tool,
+# which lives in evidence/ + commands/ at the repo root and IS tracked).
+.claude/
+
+# Evidence store — raw, unredacted engagement evidence. Never commit.
+.evidence/
+
+# Internal build brief — contains real client/engagement references. Keep out of git.
+evidence-capture-tool-build-brief.md
+
+# Python
+__pycache__/
+*.pyc
+*.tmp
+
+# Activity/worklog audit trails
+.worklog/

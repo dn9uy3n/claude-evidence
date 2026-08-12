@@ -1,0 +1,3 @@
+# Required only for rendering + report (Phase 4). Capture/integrity are stdlib-only.
+Pillow>=10.0
+Pygments>=2.17
