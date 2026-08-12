@@ -29,7 +29,7 @@ from pathlib import Path
 # an already-installed copy against the source checkout before overwriting, and
 # `evidence_ctl.py version` / `/evidence-status` surface it to the user. See
 # CHANGELOG.md for what changed at each version; releases are tagged v<version>.
-TOOL_VERSION = "0.2.0"
+TOOL_VERSION = "0.3.0"
 
 TOOL_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = TOOL_DIR / "evidence.config.json"
@@ -172,6 +172,31 @@ def match_tool_value(tool_name: str, mapping: dict):
         if not pat.startswith("mcp__") and ("*" in pat or "?" in pat) and fnmatch(short, pat):
             return val
     return None
+
+
+def mcp_server_key(tool_name: str) -> str:
+    """The server key from `mcp__<server>__<tool>` — '' if not an MCP tool name."""
+    if not tool_name.startswith("mcp__"):
+        return ""
+    parts = tool_name.split("__")
+    return parts[1] if len(parts) > 1 else ""
+
+
+def server_allowed(tool_name: str, patterns) -> bool:
+    """Gate which MCP servers produce evidence at all (separate from `match_tool`,
+    which gates behavior WITHIN an already-allowed tool). Non-MCP tool names
+    (e.g. Bash) always pass — this only restricts MCP capture. An empty/missing
+    `patterns` means no restriction (capture every connected MCP server); a
+    non-empty list is a strict allowlist matched against the server key,
+    case-insensitive, glob-capable (e.g. "windows-*" covers windows-mcp/
+    windows-deus/windows-bighost; "hexstrike*" covers hexstrike-ai/hexstrike_ai).
+    """
+    if not tool_name.startswith("mcp__"):
+        return True
+    if not patterns:
+        return True
+    server = mcp_server_key(tool_name).lower()
+    return any(fnmatch(server, str(pat).lower()) for pat in patterns)
 
 
 # --- Session directory helpers ------------------------------------------

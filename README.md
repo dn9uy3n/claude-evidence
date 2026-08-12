@@ -2,10 +2,10 @@
 
 Auto-captures every `Bash` and MCP tool call in **Claude Code** as tamper-evident evidence for pentest / red-team reports — command + output, real screenshots, hash-chained, one command to a Markdown report.
 
-**v0.2.0** — [CHANGELOG.md](CHANGELOG.md) for release notes, tags for versions.
+**v0.3.0** — [CHANGELOG.md](CHANGELOG.md) for release notes, tags for versions.
 
 - Arm with `/evidence-on`, everything after is captured automatically. No copy-paste.
-- Works with Playwright, Windows-MCP, HexStrike AI out of the box; any other MCP too (generic `mcp__.*` hook).
+- Captures Bash + the AI tools you've declared — Playwright, Windows-MCP, HexStrike AI. Other MCP servers aren't captured by default (configurable, see [Configuration](#configuration)).
 - SHA-256 hash chain — any edit/delete/reorder of a step is detectable.
 - Installed once globally; evidence stored per-project under `<project>/.evidence/` (auto-gitignored, raw/unredacted — redact before the report leaves your hands).
 
@@ -66,7 +66,8 @@ python install.py --update   # git pull, then re-install
 | [Playwright MCP](https://github.com/microsoft/playwright-mcp) | real PNG screenshots; network/JS-eval steps flagged ⚠️ (may carry tokens) |
 | [Windows-MCP](https://github.com/CursorTouch/Windows-MCP) | real PNG screenshots; `PowerShell`/`Registry`/`Clipboard` logged + flagged ⚠️ |
 | [HexStrike AI](https://github.com/0x4m4/hexstrike-ai) | any list-shaped JSON response (scan results, findings) → real Markdown table |
-| any other MCP | full command + response, hash-chained like everything else |
+
+These are the only MCP servers captured by default — everything else (RedTech, WireMCP, Jadx, ILSpy, Binary Ninja, SSH, ...) is out of scope unless you widen `allowed_mcp_servers`.
 
 ```bash
 claude mcp add playwright -- npx @playwright/mcp@latest
@@ -88,7 +89,7 @@ claude mcp add --transport stdio hexstrike-ai -- python3 hexstrike_mcp.py --serv
 
 ## Configuration
 
-`~/.claude/evidence/evidence.config.json` (global default, survives re-installs) — override per-project with `<project>/.evidence/evidence.config.json`. Main keys: `capture` (bash/mcp/screenshots on-off), `image_producing_tools`, `sensitive_hint_tools`. Pattern keys match short tool names; prefix with `mcp__` to scope to one server.
+`~/.claude/evidence/evidence.config.json` (global default, survives re-installs) — override per-project with `<project>/.evidence/evidence.config.json`. Main keys: `capture` (bash/mcp/screenshots on-off), `allowed_mcp_servers` (which MCP servers are evidence sources at all — default `["playwright*", "windows-*", "hexstrike*"]`; empty/absent = every connected server), `image_producing_tools`, `sensitive_hint_tools`. Pattern keys match short tool names; prefix with `mcp__` to scope to one server.
 
 ## Notes
 

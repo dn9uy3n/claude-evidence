@@ -125,8 +125,11 @@ def cmd_version(args) -> int:
 
 def cmd_status(args) -> int:
     state = core.load_state(WORKSPACE)
+    config = core.load_config(WORKSPACE)
+    allowed = config.get("allowed_mcp_servers") or []
     print(f"version:    {core.TOOL_VERSION}")
     print(f"workspace:  {WORKSPACE}")
+    print(f"mcp scope:  {', '.join(allowed) if allowed else 'all connected MCP servers'}")
     print(f"enabled:    {state.get('enabled', False)}")
     print(f"engagement: {state.get('engagement')}")
     print(f"session:    {state.get('session_id')}")

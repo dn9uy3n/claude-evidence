@@ -13,6 +13,11 @@
     "mcp": true,
     "screenshots": true
   },
+  "allowed_mcp_servers": [
+    "playwright*",
+    "windows-*",
+    "hexstrike*"
+  ],
   "map": {
     "regenerate_on_capture": true,
     "screenshots_section": true

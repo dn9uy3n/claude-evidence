@@ -4,6 +4,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 To check what's installed vs. what's in your checkout: `python evidence/evidence_ctl.py version` (installed) or `python install.py --check` (compares both, changes nothing).
 
+## [0.3.0] — 2026-08-12
+
+### Changed
+- **Capture is now scoped to Bash + declared AI tools by default** — Playwright, Windows-MCP, and HexStrike AI (matched by server key, portable across `windows-mcp`/`windows-deus`/`windows-bighost` and `hexstrike-ai`/`hexstrike_ai` naming). Calls to any other connected MCP server (RedTech, WireMCP, Jadx, ILSpy, Binary Ninja, SSH, ...) are no longer captured — this was previously "any other MCP" as a supported, documented path; now it's out of scope by default. New config key `allowed_mcp_servers` (glob patterns against the server key); leave it empty/absent to restore capturing every connected MCP server. `/evidence-status` shows the active scope.
+
 ## [0.2.0] — 2026-08-12
 
 ### Fixed

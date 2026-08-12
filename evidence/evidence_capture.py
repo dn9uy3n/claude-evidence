@@ -169,6 +169,8 @@ def main() -> int:
     elif tool_name.startswith("mcp__"):
         if not cap.get("mcp", True):
             return 0
+        if not core.server_allowed(tool_name, config.get("allowed_mcp_servers", [])):
+            return 0  # MCP server not in the allowlist -- not an evidence source
         source = "command" if core.match_tool(tool_name, cmd_mcp) else "mcp"
     else:
         return 0  # only Bash + MCP are evidence sources
