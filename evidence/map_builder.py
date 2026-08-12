@@ -38,10 +38,11 @@ def _note_and_attack(annotations: dict, seq):
 
 
 def _tool_label(rec: dict) -> str:
+    warn = "⚠️ " if rec.get("sensitive_hint") else ""
     ti = rec.get("tool_input") or {}
     if rec.get("source") == "command" and isinstance(ti, dict) and ti.get("command"):
-        return "`" + _cell(ti.get("command"), 90) + "`"
-    return _cell(rec.get("tool_name", "").split("__")[-1], 70)
+        return warn + "`" + _cell(ti.get("command"), 90) + "`"
+    return warn + _cell(rec.get("tool_name", "").split("__")[-1], 70)
 
 
 def _load_records(session_dir: Path):

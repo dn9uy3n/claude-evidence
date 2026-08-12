@@ -8,6 +8,7 @@ not rendered here — they are embedded as-is by the report assembler.
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -24,6 +25,83 @@ try:
 except Exception as exc:  # pragma: no cover - dependency probe
     AVAILABLE = False
     IMPORT_ERROR = exc
+
+
+# --- structured JSON -> Markdown table ------------------------------------
+# Pure stdlib, no Pillow/Pygments dependency — works even when AVAILABLE is
+# False. Tool-agnostic by design: any MCP response shaped as a list of
+# records (HexStrike scan findings, RedTech query results, WireMCP
+# conversations, ...) renders as a real table instead of a JSON dump.
+
+def _is_content_block_list(data) -> bool:
+    """MCP tool responses are typically [{"type": "text", "text": "..."}, ...] —
+    a protocol envelope, not the structured data itself."""
+    return isinstance(data, list) and bool(data) and all(
+        isinstance(x, dict) and "type" in x for x in data
+    )
+
+
+def _unwrap_mcp_content(data):
+    """If `data` is an MCP content-block list, pull the real structured data out
+    of its text block(s) (the tool's JSON is usually JSON-encoded as a string
+    inside `text`, not a nested object). Returns None if it's an envelope with
+    no parseable structured text (i.e. plain prose output — not tabular).
+    Passes non-envelope data through unchanged.
+    """
+    if not _is_content_block_list(data):
+        return data
+    for block in data:
+        if block.get("type") == "text" and isinstance(block.get("text"), str):
+            try:
+                return json.loads(block["text"])
+            except (json.JSONDecodeError, TypeError):
+                continue
+    return None
+
+
+def _table_rows(data):
+    """Return the list-of-dict to tabulate, or None if `data` isn't tabular."""
+    if isinstance(data, list) and data and all(isinstance(x, dict) for x in data):
+        return data
+    if isinstance(data, dict):
+        for v in data.values():
+            if isinstance(v, list) and v and all(isinstance(x, dict) for x in v):
+                return v
+    return None
+
+
+def _table_cell(value, max_len=100) -> str:
+    s = "" if value is None else str(value)
+    s = s.replace("\n", " ⏎ ").replace("|", "\\|")
+    return (s[: max_len - 1] + "…") if len(s) > max_len else s
+
+
+def to_table(data, max_rows: int = 40, max_cols: int = 8) -> str | None:
+    """Render `data` as a Markdown table if it's list-of-dict shaped, else None."""
+    data = _unwrap_mcp_content(data)
+    if data is None:
+        return None
+    rows = _table_rows(data)
+    if not rows:
+        return None
+    cols = []
+    for r in rows[:max_rows]:
+        for k in r.keys():
+            if k not in cols:
+                cols.append(k)
+    if not cols:
+        return None
+    cols = cols[:max_cols]
+
+    lines = [
+        "| " + " | ".join(cols) + " |",
+        "|" + "|".join("---" for _ in cols) + "|",
+    ]
+    for r in rows[:max_rows]:
+        lines.append("| " + " | ".join(_table_cell(r.get(c)) for c in cols) + " |")
+    if len(rows) > max_rows:
+        lines.append(f"\n_...{len(rows) - max_rows} more rows, see the raw JSON sidecar._")
+    return "\n".join(lines)
 
 
 # --- theme ---------------------------------------------------------------

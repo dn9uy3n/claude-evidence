@@ -18,20 +18,22 @@
     "screenshots_section": true
   },
   "image_producing_tools": {
-    "mcp__playwright__browser_take_screenshot": "filepath",
-    "mcp__windows-mcp__Screenshot": "base64",
-    "mcp__windows-mcp__Snapshot": "base64",
-    "mcp__hexstrike-ai__*_screenshot": "auto"
+    "browser_take_screenshot": "filepath",
+    "Screenshot": "base64",
+    "Snapshot": "base64"
   },
   "command_producing_mcp_tools": [
-    "mcp__windows-mcp__PowerShell"
+    "PowerShell"
   ],
-  "hexstrike_structured_tools": [
-    "nmap_scan",
-    "nuclei_scan",
-    "sqlmap_scan",
-    "ffuf_scan",
-    "gobuster_scan"
+  "sensitive_hint_tools": [
+    "browser_network_request",
+    "browser_network_requests",
+    "browser_evaluate",
+    "PowerShell",
+    "execute_command",
+    "execute_python_script",
+    "Registry",
+    "Clipboard"
   ],
   "integrity": {
     "hash_chain": true,

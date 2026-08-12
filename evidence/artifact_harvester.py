@@ -16,10 +16,9 @@ import binascii
 import os
 import re
 import shutil
-from fnmatch import fnmatch
 from pathlib import Path
 
-from evidence_core import sha256_file
+from evidence_core import sha256_file, match_tool_value
 
 _IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp")
 
@@ -64,12 +63,8 @@ def _walk(obj):
 
 
 def _mode_for_tool(tool_name: str, mapping: dict) -> str | None:
-    if tool_name in mapping:
-        return mapping[tool_name]
-    for pat, mode in mapping.items():
-        if ("*" in pat or "?" in pat) and fnmatch(tool_name, pat):
-            return mode
-    return None
+    """Portable across server keys — see evidence_core.match_tool_value."""
+    return match_tool_value(tool_name, mapping)
 
 
 # --- base64 detection ----------------------------------------------------

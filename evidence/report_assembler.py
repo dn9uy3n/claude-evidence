@@ -60,8 +60,6 @@ def build(session_dir: Path, config: dict, fmt: str = "md") -> Path:
     ts_first = records[0].get("ts", "") if records else ""
     ts_last = records[-1].get("ts", "") if records else ""
 
-    structured = set(config.get("hexstrike_structured_tools", []))
-
     out = []
     out.append(f"# Evidence Report — {engagement}")
     out.append("")
@@ -85,13 +83,27 @@ def build(session_dir: Path, config: dict, fmt: str = "md") -> Path:
         seq = r.get("seq")
         short = r.get("tool_name", "").split("__")[-1]
         note, attack = _annot(annotations, seq)
-        tag = "  ·  🧩 structured" if short in structured else ""
+
+        # Structured table takes priority for MCP responses shaped as records
+        # (HexStrike scans, RedTech queries, ...) — tool-agnostic, no allowlist.
+        table_md = None
+        if renderer and r.get("source") == "mcp" and r.get("response_json_path"):
+            try:
+                resp_data = core.load_json(session_dir / r["response_json_path"], default=None)
+                table_md = renderer.to_table(resp_data)
+            except Exception:
+                table_md = None
+
+        tag = "  ·  📊 table" if table_md else ""
         out.append(f"## Step {seq:04d} — `{short}`  ({r.get('source')}){tag}")
         out.append(f"_{r.get('ts', '')}_")
         out.append("")
         if note or attack:
             label = (f"**ATT&CK {attack}** — " if attack else "") + (note or "")
             out.append(f"> {label}")
+            out.append("")
+        if r.get("sensitive_hint"):
+            out.append("> ⚠️ This step's output may contain secrets/tokens/PII — review before the report leaves your hands.")
             out.append("")
 
         ti = r.get("tool_input") or {}
@@ -101,22 +113,25 @@ def build(session_dir: Path, config: dict, fmt: str = "md") -> Path:
             out.append(_fence(json.dumps(ti, ensure_ascii=False, indent=2), "json"))
         out.append("")
 
-        # rendered output PNG (or text fallback)
-        png_ref = None
-        if _RENDER:
-            try:
-                dest = img_dir / f"{seq:04d}-step.png"
-                if renderer.render_step(session_dir, r, config, dest):
-                    png_ref = f"img/{dest.name}"
-            except Exception:
-                png_ref = None
-        if png_ref:
-            out.append(f"![step {seq:04d} output]({png_ref})")
+        if table_md:
+            out.append(table_md)
         else:
-            src = session_dir / (r.get("text_path") or "")
-            if src.exists():
-                body = src.read_text(encoding="utf-8", errors="replace").split("\n--- raw tool_response", 1)[0]
-                out.append(_fence(body[:6000]))
+            # rendered output PNG (or text fallback)
+            png_ref = None
+            if _RENDER:
+                try:
+                    dest = img_dir / f"{seq:04d}-step.png"
+                    if renderer.render_step(session_dir, r, config, dest):
+                        png_ref = f"img/{dest.name}"
+                except Exception:
+                    png_ref = None
+            if png_ref:
+                out.append(f"![step {seq:04d} output]({png_ref})")
+            else:
+                src = session_dir / (r.get("text_path") or "")
+                if src.exists():
+                    body = src.read_text(encoding="utf-8", errors="replace").split("\n--- raw tool_response", 1)[0]
+                    out.append(_fence(body[:6000]))
         out.append("")
 
         # real screenshot

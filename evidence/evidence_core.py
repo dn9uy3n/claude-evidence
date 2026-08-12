@@ -19,6 +19,7 @@ import hashlib
 import json
 import os
 import time
+from fnmatch import fnmatch
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -116,6 +117,55 @@ def load_state(workspace: Path) -> dict:
 
 def save_state(state: dict, workspace: Path) -> None:
     write_json(state_path(workspace), state)
+
+
+# --- Tool name matching ---------------------------------------------------
+#
+# MCP server keys vary per install — the same underlying tool (Windows-MCP,
+# HexStrike AI, ...) can be mounted as `windows-mcp`, `windows-deus`,
+# `windows-bighost`, `hexstrike-ai`, `hexstrike_ai`, etc. Matching on the full
+# `mcp__<server>__<tool>` name is therefore fragile. Config patterns match on
+# the SHORT tool name (after the last `__`) by default — portable across any
+# server key — unless a pattern is explicitly scoped with an `mcp__` prefix.
+
+def tool_short_name(tool_name: str) -> str:
+    return tool_name.split("__")[-1] if "__" in tool_name else tool_name
+
+
+def match_tool(tool_name: str, patterns) -> bool:
+    """True if `tool_name` matches any pattern in `patterns`.
+
+    A pattern starting with 'mcp__' matches the FULL tool name (scopes to one
+    server). Any other pattern matches the SHORT name. Glob wildcards (* ?)
+    are supported in either form.
+    """
+    short = tool_short_name(tool_name)
+    for pat in patterns or []:
+        target = tool_name if pat.startswith("mcp__") else short
+        if pat == target or fnmatch(target, pat):
+            return True
+    return False
+
+
+def match_tool_value(tool_name: str, mapping: dict):
+    """Like `match_tool` but for a {pattern: value} dict — returns the value of
+    the most specific match, or None. Precedence: exact full name > full-name
+    glob > exact short name > short-name glob.
+    """
+    if not mapping:
+        return None
+    short = tool_short_name(tool_name)
+    if tool_name in mapping:
+        return mapping[tool_name]
+    for pat, val in mapping.items():
+        if pat.startswith("mcp__") and ("*" in pat or "?" in pat) and fnmatch(tool_name, pat):
+            return val
+    if short in mapping:
+        return mapping[short]
+    for pat, val in mapping.items():
+        if not pat.startswith("mcp__") and ("*" in pat or "?" in pat) and fnmatch(short, pat):
+            return val
+    return None
 
 
 # --- Session directory helpers ------------------------------------------

@@ -78,16 +78,18 @@ In any project, inside Claude Code:
 
 ## Works with your AI tooling
 
-The point of this tool is that your offensive work already flows through MCP servers — a headless browser here, a desktop driver there, a farm of scanners somewhere else. This hook sits under all of them: whatever tool you drive, its command, structured result, and any screenshot become evidence automatically. Two harvest modes (`filepath` and `base64`) map exactly onto how these tools return images.
+The point of this tool is that your offensive work already flows through MCP servers — a headless browser here, a desktop driver there, a farm of scanners somewhere else. This hook sits under all of them: whatever tool you drive, its command, structured result, and any screenshot become evidence automatically — not just a "an MCP call happened" log line.
+
+**Tool matching is by short name, not full server-qualified name.** The same underlying tool gets mounted under different server keys depending on install (`windows-mcp`, `windows-deus`, `windows-bighost`; `hexstrike-ai`, `hexstrike_ai`, ...) — `claude mcp add <key> -- ...` picks the key, and it varies per machine. So config patterns like `Screenshot`, `PowerShell` match the tool name *after the last `__`*, regardless of server key — no per-install config editing needed. A pattern starting with `mcp__` still scopes to one exact server if you need that.
 
 | MCP tool | Repo | What it produces | Captured as |
 |---|---|---|---|
-| **Playwright MCP** | [microsoft/playwright-mcp](https://github.com/microsoft/playwright-mcp) | browser screenshots (saved file path), DOM snapshots, console/network | real PNG via **filepath** harvest + full response text |
-| **Windows-MCP** | [CursorTouch/Windows-MCP](https://github.com/CursorTouch/Windows-MCP) | desktop screenshots (base64), `PowerShell` output, UI actions | real PNG via **base64** harvest; `PowerShell` logged as a command |
-| **HexStrike AI** | [0x4m4/hexstrike-ai](https://github.com/0x4m4/hexstrike-ai) | `nmap_scan` / `nuclei_scan` / `sqlmap_scan` / `ffuf_scan` / … structured findings + Browser-Agent screenshots | structured tables in the report + real PNG (`auto` harvest) |
-| **any other MCP** | — | RedTech recon graph, WireMCP PCAP, Jadx / ILSpy / Binary Ninja RE, SSH, … | full `tool_input` + `tool_response` text, chained like everything else |
+| **Playwright MCP** | [microsoft/playwright-mcp](https://github.com/microsoft/playwright-mcp) | `browser_take_screenshot` (saved file path), `browser_snapshot` (a11y tree), `browser_network_requests`, `browser_evaluate` | real PNG via **filepath** harvest; network/evaluate steps flagged ⚠️ (may carry tokens/cookies) |
+| **Windows-MCP** | [CursorTouch/Windows-MCP](https://github.com/CursorTouch/Windows-MCP) | `Screenshot`/`Snapshot` (base64 desktop image), `PowerShell`, `Registry`, `Clipboard`, UI actions | real PNG via **base64** harvest; `PowerShell`/`Registry`/`Clipboard` logged as commands, flagged ⚠️ |
+| **HexStrike AI** | [0x4m4/hexstrike-ai](https://github.com/0x4m4/hexstrike-ai) | 100+ tools (`nmap_scan`, `nuclei_scan`, `sqlmap_scan`, `ghidra_analysis`, `volatility_analyze`, …) — no screenshot tool of its own, browser evidence comes via Playwright | any list-of-record JSON response auto-renders as a **real Markdown table** — not a name allowlist, works for any tool that returns tabular data |
+| **any other MCP** | — | RedTech recon graph, WireMCP PCAP, Jadx / ILSpy / Binary Ninja RE, SSH, … | same generic-table + full `tool_input`/`tool_response` capture, chained like everything else |
 
-**Connect the tools** (then run `/mcp` to confirm each server's exact prefix, and adjust `image_producing_tools` in the config if a name differs):
+**Connect the tools** (then run `/mcp` to confirm each server's exact key — the short-name matching above means it usually doesn't matter):
 
 ```bash
 # Playwright MCP — real browser screenshots
@@ -103,6 +105,8 @@ claude mcp add --transport stdio hexstrike-ai -- python3 hexstrike-ai/hexstrike_
 ```
 
 You capture screenshots either passively (just call the tool — the hook harvests the result) or explicitly with `/evidence-snap-web` (Playwright) and `/evidence-snap-desktop` (Windows-MCP). A failed tool call is evidence too: the record is still written so gaps in an engagement are visible.
+
+**Sensitive-data hints.** Steps from tools that commonly carry secrets — `PowerShell`, `Registry`, `Clipboard`, `browser_network_requests`, `browser_evaluate`, `execute_command`, `execute_python_script` — get a ⚠️ marker in `map.md` and a callout in the report, as a reminder to check before the raw evidence leaves your hands. Configurable via `sensitive_hint_tools`.
 
 ## What lands on disk
 
@@ -130,11 +134,11 @@ You capture screenshots either passively (just call the tool — the hook harves
 
 ## Configuration
 
-Defaults live in `~/.claude/evidence/evidence.config.json` and are preserved across re-installs. A project may override any top-level key with `<project>/.evidence/evidence.config.json`. Notable keys: `capture` (toggle bash/mcp/screenshots), `map.regenerate_on_capture`, `image_producing_tools` (which MCP tools yield screenshots and how — `filepath` / `base64` / `auto`), `command_producing_mcp_tools` (e.g. Windows-MCP `PowerShell`).
+Defaults live in `~/.claude/evidence/evidence.config.json` and are preserved across re-installs. A project may override any top-level key with `<project>/.evidence/evidence.config.json`. Notable keys: `capture` (toggle bash/mcp/screenshots), `map.regenerate_on_capture`, `image_producing_tools` (which tools yield screenshots and how — `filepath` / `base64` / `auto`, matched by short name), `command_producing_mcp_tools` (e.g. `PowerShell`), `sensitive_hint_tools` (steps to flag ⚠️ for redaction review). Pattern keys match the short tool name by default; prefix a pattern with `mcp__` to scope it to one exact server instead.
 
 ## Notes
 
-- **Not connected yet ≠ unsupported.** `windows-mcp` / `hexstrike-ai` mappings ship pre-wired and inert; the `mcp__.*` matcher captures every MCP regardless, and screenshots harvest the moment those servers are added.
+- **Not connected yet ≠ unsupported.** The `mcp__.*` matcher captures every MCP regardless of whether it's connected this session; short-name matching means screenshots/tables/tagging work the moment a matching tool is added, with no config edits.
 - **Windows / macOS / Linux.** Integrity is the hash chain (portable); on Linux you may additionally `chattr +a log.jsonl`, on Windows use an `icacls` deny-write ACL, for OS-level append-only hardening.
 - Not a replacement for git history — file contents at a point in time come from git, not from this log.
 

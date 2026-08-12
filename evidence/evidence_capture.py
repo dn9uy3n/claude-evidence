@@ -169,7 +169,7 @@ def main() -> int:
     elif tool_name.startswith("mcp__"):
         if not cap.get("mcp", True):
             return 0
-        source = "command" if tool_name in cmd_mcp else "mcp"
+        source = "command" if core.match_tool(tool_name, cmd_mcp) else "mcp"
     else:
         return 0  # only Bash + MCP are evidence sources
 
@@ -189,6 +189,18 @@ def main() -> int:
             with open(steps_path, "w", encoding="utf-8") as fh:
                 fh.write(_render_step_text(seq, source, tool_name, tool_input, tool_response, data))
 
+            # Structured sidecar for MCP responses — lets the report render a real
+            # Markdown table (renderer.to_table) instead of a flat JSON dump, for
+            # ANY tool whose response is list-of-dict shaped (not just a hardcoded
+            # tool-name allowlist).
+            response_json_name = None
+            if source == "mcp":
+                response_json_name = f"{seq:04d}-{tool_short}.json"
+                with open(session_dir / "steps" / response_json_name, "w", encoding="utf-8") as fh:
+                    json.dump(_strip_and_clip(tool_response), fh, ensure_ascii=False)
+
+            sensitive_hint = core.match_tool(tool_name, config.get("sensitive_hint_tools", []))
+
             art = None
             if cap.get("screenshots", True):
                 try:
@@ -207,9 +219,11 @@ def main() -> int:
                 "tool_input": _strip_and_clip(tool_input),
                 "tool_response_summary": _summarize(source, tool_name, tool_input, tool_response),
                 "text_path": f"steps/{steps_name}",
+                "response_json_path": f"steps/{response_json_name}" if response_json_name else None,
                 "artifact_path": art["artifact_path"] if art else None,
                 "artifact_kind": art["artifact_kind"] if art else None,
                 "artifact_sha256": art["artifact_sha256"] if art else None,
+                "sensitive_hint": sensitive_hint,
                 "attack_technique": None,
             }
             core.commit_record(session_dir, record, seq, prev)
