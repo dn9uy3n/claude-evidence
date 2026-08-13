@@ -2,7 +2,7 @@
 
 Auto-captures every `Bash` and MCP tool call in **Claude Code** as tamper-evident evidence for pentest / red-team reports — command + output, real screenshots, hash-chained, one command to a Markdown report.
 
-**v0.4.0** — [CHANGELOG.md](CHANGELOG.md) for release notes, tags for versions.
+**v0.4.4** — [CHANGELOG.md](CHANGELOG.md) for release notes, tags for versions.
 
 - Arm with `/evidence-on`, everything after is captured automatically. No copy-paste.
 - Captures Bash + the AI tools you've declared — Playwright, Windows-MCP, HexStrike AI. Other MCP servers aren't captured by default (configurable, see [Configuration](#configuration)).

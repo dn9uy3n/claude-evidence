@@ -4,6 +4,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 To check what's installed vs. what's in your checkout: `python evidence/evidence_ctl.py version` (installed) or `python install.py --check` (compares both, changes nothing).
 
+## [0.4.4] — 2026-08-13
+
+### Fixed
+- **A step could be silently dropped with `UnicodeEncodeError`.** Captured tool text occasionally contains a lone (unpaired) Unicode surrogate — typically from a subprocess whose output got decoded with the wrong codepage upstream (seen on Windows). UTF-8 cannot encode that codepoint at all, so the very first disk write for the step raised, the step never made it into `log.jsonl`, and the only trace was an entry in `steps/errors.log`. Tool payloads are now sanitized (bad codepoints replaced with a visible `\udXXX`-style marker) immediately after the hook parses them — once, at the top — so the hash, the JSON sidecar, and the on-disk text all stay consistent; patching only the final write call risks the hash and the on-disk bytes silently diverging, which `verify_chain` would then misreport as tampering.
+
+## [0.4.3] — 2026-08-13
+
+### Fixed
+- **One verbose JSON field could push the actually-important fields out of the image entirely.** A response with a long string value (e.g. a multi-KB SQL debug string in a "query" field) would wrap into dozens of rows on its own, consuming the whole `max_lines` budget before later fields (`status`, `rowcount`, the actual result data) ever got drawn — silently dropped, with only the generic "truncated" notice at the bottom as a clue. Long string *values* inside embedded JSON are now clipped (with a `… <N more chars, see steps/ file>` marker) before pretty-printing, so no single field can starve the rest of the structure out of the rendered image. Unclipped, full-fidelity data is unaffected in `steps/*.txt` and the JSON sidecar.
+
+## [0.4.2] — 2026-08-13
+
+### Changed
+- **Embedded JSON now pretty-prints before wrapping.** 0.4.1 fixed long lines being silently cut, by wrapping them — but a long `curl -d '{...}'` payload or raw JSON API response wrapped at a fixed character column still buried the field you actually care about mid-line. Any line containing a parseable JSON object/array (a `-d` payload, a raw response body) is now pretty-printed one field per line before rendering, so a specific value is easy to spot instead of hidden in a wall of wrapped text. Non-JSON lines and ANSI-colored output are untouched.
+
+## [0.4.1] — 2026-08-13
+
+### Fixed
+- **Rendered step PNGs silently dropped content on long lines.** `render_text()` hard-truncated any line past 140 characters with a bare `…`, no notice — a long `curl -d '{...}'` JSON payload or a long JSON API response (very common evidence) would visibly lose data in the image itself, with no indication anything was cut. Long lines now wrap onto additional rows in the image instead of being cut; nothing is dropped. The existing `max_lines` cap (with its truncation notice) still applies if the *wrapped* image would otherwise get very tall.
+
 ## [0.4.0] — 2026-08-13
 
 ### Added

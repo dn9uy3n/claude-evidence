@@ -29,7 +29,7 @@ from pathlib import Path
 # an already-installed copy against the source checkout before overwriting, and
 # `evidence_ctl.py version` / `/evidence-status` surface it to the user. See
 # CHANGELOG.md for what changed at each version; releases are tagged v<version>.
-TOOL_VERSION = "0.4.0"
+TOOL_VERSION = "0.4.4"
 
 TOOL_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = TOOL_DIR / "evidence.config.json"

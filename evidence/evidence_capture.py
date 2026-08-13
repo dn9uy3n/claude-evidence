@@ -31,6 +31,32 @@ def _short(tool_name: str) -> str:
     return "".join(c if (c.isalnum() or c in "._-") else "_" for c in base) or "tool"
 
 
+def _sanitize_unicode(obj):
+    """Replace lone (unpaired) surrogate code points that can appear in
+    captured tool text (typically from a subprocess whose output got decoded
+    with the wrong codepage upstream, e.g. on Windows) with a visible
+    `\\udXXX`-style marker. UTF-8 cannot encode a lone surrogate at all, so
+    without this the very first disk write for a step raises and the whole
+    step is silently dropped -- no record in log.jsonl, no trace beyond
+    errors.log.
+
+    Applied ONCE, immediately after parsing the hook payload, so every
+    downstream consumer (steps/*.txt, the JSON sidecar, and — critically —
+    the hash-chained record) sees the exact same sanitized text. Patching
+    only the final file-write call is NOT enough: the hash is computed from
+    the in-memory string before that write, so mangling bytes only at write
+    time would make the on-disk content silently diverge from what was
+    hashed, and a later `verify_chain` would flag a false tamper alarm.
+    """
+    if isinstance(obj, str):
+        return obj.encode("utf-8", errors="backslashreplace").decode("utf-8")
+    if isinstance(obj, dict):
+        return {k: _sanitize_unicode(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_unicode(v) for v in obj]
+    return obj
+
+
 def _strip_and_clip(obj, depth=0):
     """Copy `obj` replacing base64 image payloads with a placeholder and
     truncating long strings — keeps the record + raw dump human-readable."""
@@ -133,10 +159,10 @@ def _summarize(source, tool_name, tool_input, tool_response) -> str:
 
 def _log_error(session_dir, exc, raw):
     try:
-        with open(Path(session_dir) / "steps" / "errors.log", "a", encoding="utf-8") as fh:
+        with open(Path(session_dir) / "steps" / "errors.log", "a", encoding="utf-8", errors="replace") as fh:
             fh.write(f"{core.utc_now_iso()} {exc!r}\n{traceback.format_exc()}\n")
-    except OSError:
-        pass
+    except Exception:
+        pass  # the error sink must never itself break the "always exit 0" guarantee
 
 
 # --- main ----------------------------------------------------------------
@@ -147,6 +173,7 @@ def main() -> int:
         data = json.loads(raw) if raw.strip() else {}
     except (ValueError, OSError):
         return 0
+    data = _sanitize_unicode(data)
 
     workspace = core.resolve_workspace(data.get("cwd"))
     state = core.load_state(workspace)
@@ -188,7 +215,7 @@ def main() -> int:
             steps_name = f"{seq:08d}-{tool_short}.txt"
             steps_path = session_dir / "steps" / steps_name
             steps_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(steps_path, "w", encoding="utf-8") as fh:
+            with open(steps_path, "w", encoding="utf-8", errors="replace") as fh:
                 fh.write(_render_step_text(seq, source, tool_name, tool_input, tool_response, data))
 
             # Structured sidecar for MCP responses — lets the report render a real
@@ -198,7 +225,7 @@ def main() -> int:
             response_json_name = None
             if source == "mcp":
                 response_json_name = f"{seq:08d}-{tool_short}.json"
-                with open(session_dir / "steps" / response_json_name, "w", encoding="utf-8") as fh:
+                with open(session_dir / "steps" / response_json_name, "w", encoding="utf-8", errors="replace") as fh:
                     json.dump(_strip_and_clip(tool_response), fh, ensure_ascii=False)
 
             sensitive_hint = core.match_tool(tool_name, config.get("sensitive_hint_tools", []))

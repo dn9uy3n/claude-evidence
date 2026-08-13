@@ -251,6 +251,84 @@ def _load_font(config):
 
 # --- draw ----------------------------------------------------------------
 
+_MAX_JSON_STRING = 300
+
+
+def _clip_json_strings(obj):
+    """Recursively clip long string values (e.g. a multi-KB SQL debug string
+    in a "query" field) before pretty-printing. Without this, one verbose
+    field wraps into dozens of image rows and eats the whole max_lines
+    budget, silently pushing the OTHER fields — often the actual result data
+    — out of the image entirely. Only affects this rendered view; the raw
+    JSON sidecar / steps/*.txt keep the full, unclipped value."""
+    if isinstance(obj, str):
+        if len(obj) > _MAX_JSON_STRING:
+            return obj[:_MAX_JSON_STRING] + f"… <{len(obj) - _MAX_JSON_STRING} more chars, see steps/ file>"
+        return obj
+    if isinstance(obj, dict):
+        return {k: _clip_json_strings(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_clip_json_strings(v) for v in obj]
+    return obj
+
+
+def _prettify_embedded_json(line: str):
+    """If `line` contains a JSON object/array (a curl -d '{...}' payload, a raw
+    JSON API response, ...), return the line with that JSON pretty-printed
+    (one field per line) — the field a reviewer actually needs is then its own
+    line instead of buried mid-way through a character-wrapped wall of text.
+    Text before/after the JSON (e.g. `-d '` / `'`) is preserved as-is. Returns
+    None if no JSON is found or it doesn't parse (left untouched — never
+    guess wrong and corrupt what's shown)."""
+    start = line.find("{")
+    alt = line.find("[")
+    if alt != -1 and (start == -1 or alt < start):
+        start = alt
+    if start == -1:
+        return None
+    end = max(line.rfind("}"), line.rfind("]"))
+    if end == -1 or end <= start:
+        return None
+    try:
+        parsed = json.loads(line[start:end + 1])
+    except (json.JSONDecodeError, ValueError):
+        return None
+    pretty = json.dumps(_clip_json_strings(parsed), indent=2, ensure_ascii=False)
+    return line[:start] + pretty + line[end + 1:]
+
+
+def _prettify_json_lines(text: str) -> str:
+    """Apply _prettify_embedded_json line-by-line across a whole text block."""
+    return "\n".join(
+        (_prettify_embedded_json(line) or line) for line in text.split("\n")
+    )
+
+
+def _wrap_segments(segs, max_cols: int):
+    """Wrap one logical line's colored (text, color) fragments onto multiple
+    display lines of at most max_cols characters each, splitting fragments as
+    needed. Unlike truncation, this never drops any character."""
+    lines = [[]]
+    col = 0
+    for text, color in segs:
+        while text:
+            remaining = max_cols - col
+            if remaining <= 0:
+                lines.append([])
+                col = 0
+                remaining = max_cols
+            if len(text) <= remaining:
+                lines[-1].append((text, color))
+                col += len(text)
+                text = ""
+            else:
+                lines[-1].append((text[:remaining], color))
+                text = text[remaining:]
+                lines.append([])
+                col = 0
+    return lines
+
+
 def render_text(text: str, dest: Path, config: dict, caption: str = "", mode: str = "plain") -> Path:
     if not AVAILABLE:
         raise RuntimeError(f"renderer dependencies missing: {IMPORT_ERROR}")
@@ -258,12 +336,30 @@ def render_text(text: str, dest: Path, config: dict, caption: str = "", mode: st
     max_lines = int((config.get("renderer") or {}).get("max_lines", 80))
     max_cols = 140
 
-    if "\x1b[" in text:
+    has_ansi = "\x1b[" in text
+    if not has_ansi:
+        # Pretty-print any embedded JSON (curl -d payloads, raw API responses)
+        # BEFORE tokenizing -- one field per line reads far better than a
+        # character-wrapped wall of compact JSON. Skipped for ANSI-colored
+        # text to avoid the transform interacting with escape sequences.
+        text = _prettify_json_lines(text)
+
+    if has_ansi:
         seg_lines = _ansi_lines(text)
     elif mode == "bash":
         seg_lines = _pygments_lines(text, "bash")
     else:
         seg_lines = _pygments_lines(text, "plain")
+
+    # Wrap (never truncate) lines wider than max_cols -- a long curl -d JSON
+    # payload or API response is common evidence, and silently cutting it
+    # with "…" makes the image itself an incomplete/misleading record. Wrap
+    # BEFORE the max_lines cap below so that cap (which does carry an
+    # explicit truncation notice) is what limits overall image size, not a
+    # silent per-line cut.
+    seg_lines = [wrapped for segs in seg_lines
+                 for wrapped in (_wrap_segments(segs, max_cols)
+                                 if sum(len(t) for t, _ in segs) > max_cols else [segs])]
 
     truncated = len(seg_lines) > max_lines
     seg_lines = seg_lines[:max_lines]
@@ -280,21 +376,6 @@ def render_text(text: str, dest: Path, config: dict, caption: str = "", mode: st
     pad = 20
     titlebar = 34
     cap_h = line_h + 6 if caption else 0
-
-    # Truncate over-wide lines to bound image width.
-    for li, segs in enumerate(seg_lines):
-        total = sum(len(t) for t, _ in segs)
-        if total > max_cols:
-            budget = max_cols
-            new = []
-            for t, c in segs:
-                if budget <= 0:
-                    break
-                if len(t) > budget:
-                    new.append((t[:budget] + "…", c)); budget = 0
-                else:
-                    new.append((t, c)); budget -= len(t)
-            seg_lines[li] = new
 
     content_cols = max((sum(len(t) for t, _ in segs) for segs in seg_lines), default=10)
     width = int(pad * 2 + max(content_cols, len(caption)) * char_w + 8)
