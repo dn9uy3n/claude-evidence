@@ -2,7 +2,7 @@
 
 Auto-captures every `Bash` and MCP tool call in **Claude Code** as tamper-evident evidence for pentest / red-team reports — command + output, real screenshots, hash-chained, one command to a Markdown report.
 
-**v0.3.0** — [CHANGELOG.md](CHANGELOG.md) for release notes, tags for versions.
+**v0.4.0** — [CHANGELOG.md](CHANGELOG.md) for release notes, tags for versions.
 
 - Arm with `/evidence-on`, everything after is captured automatically. No copy-paste.
 - Captures Bash + the AI tools you've declared — Playwright, Windows-MCP, HexStrike AI. Other MCP servers aren't captured by default (configurable, see [Configuration](#configuration)).
@@ -19,7 +19,7 @@ cd claude-evidence
 python install.py
 ```
 
-Copies the engine + 8 `/evidence-*` commands to `~/.claude/`, wires the capture hook into `settings.json`, installs Pillow + Pygments (for report rendering). **Restart Claude Code** after.
+Copies the engine + 9 `/evidence-*` commands to `~/.claude/`, wires the capture hook into `settings.json`, installs Pillow + Pygments (for report rendering). **Restart Claude Code** after.
 
 ```bash
 python install.py --dir /path/to/.claude   # different Claude dir
@@ -52,12 +52,19 @@ python install.py --update   # git pull, then re-install
 |---|---|
 | `/evidence-on [name]` | Arm capture for this project |
 | `/evidence-off` | Verify chain, seal manifest, stop |
+| `/evidence-resume [session-id] [--list]` | Re-arm a stopped session, same chain |
 | `/evidence-status` | Armed? counts, chain integrity, version |
 | `/evidence-note <seq> "<label>" [--attack Txxxx]` | Annotate a step |
 | `/evidence-map` | Regenerate `map.md` index |
 | `/evidence-report` | Build the Markdown report |
 | `/evidence-snap-web <url>` | Playwright screenshot |
 | `/evidence-snap-desktop` | Windows-MCP screenshot |
+
+Each captured step gets rendered like this in the report — just the command and its real output, nothing else:
+
+![Example rendered evidence step: a multi-line curl/grep command and its output](docs/img/example-step.png)
+
+A step that already has a real screenshot (Playwright, Windows-MCP) embeds that image directly instead — no PNG-of-text gets generated for it.
 
 ## Works with your AI tooling
 

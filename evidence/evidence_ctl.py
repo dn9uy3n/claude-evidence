@@ -8,6 +8,7 @@ even though the tool itself is installed once (globally).
 
   on [engagement]        arm capture; create <ws>/.evidence/<engagement>/<session>/
   off                    verify chain, seal manifest.json, stop capturing
+  resume [session]       re-arm a previously stopped session (same chain, no new session)
   status                 enabled? engagement, counts, chain integrity, version
   note <seq> "<label>"   annotate a step (optionally --attack Txxxx)
   map                    regenerate map.md
@@ -47,6 +48,24 @@ def _ensure_gitignore():
     if line not in existing.splitlines():
         with open(gi, "a", encoding="utf-8") as fh:
             fh.write(("" if not existing or existing.endswith("\n") else "\n") + line + "\n")
+
+
+def _list_sessions(config):
+    """Every session dir this workspace has ever recorded (has a log.jsonl),
+    across all engagements — not just the one state.json currently tracks.
+    Most recent first (session ids sort chronologically as strings)."""
+    root = WORKSPACE / config.get("output_root", ".evidence")
+    if not root.exists():
+        return []
+    out = []
+    for eng_dir in root.iterdir():
+        if not eng_dir.is_dir():
+            continue
+        for sess_dir in eng_dir.iterdir():
+            if sess_dir.is_dir() and (sess_dir / "log.jsonl").exists():
+                out.append((eng_dir.name, sess_dir.name, sess_dir))
+    out.sort(key=lambda t: t[1], reverse=True)
+    return out
 
 
 # --- verbs ---------------------------------------------------------------
@@ -115,6 +134,88 @@ def cmd_off(args) -> int:
     print(f"Evidence capture OFF. Manifest sealed: {session_dir.parent / 'manifest.json'}")
     print(f"  steps: {len(records)}  screenshots: {shots}  chain: {'OK' if chain['ok'] else 'BROKEN @ ' + str(chain['break_at'])}")
     print(f"  final hash: {manifest['final_record_sha256']}")
+    return 0
+
+
+def cmd_resume(args) -> int:
+    config = core.load_config(WORKSPACE)
+    state = core.load_state(WORKSPACE)
+
+    if args.list:
+        sessions = _list_sessions(config)
+        if not sessions:
+            print("No sessions found in this workspace.")
+            return 0
+        cur_eng, cur_sess, cur_on = state.get("engagement"), state.get("session_id"), state.get("enabled")
+        for eng, sess, sdir in sessions:
+            n = sum(1 for _ in core.iter_records(sdir))
+            tag = " (current, armed)" if cur_on and eng == cur_eng and sess == cur_sess else ""
+            print(f"  {eng}/{sess}  ({n} steps){tag}")
+        print("\nResume with: evidence_ctl.py resume <session-id> [--engagement <name>]")
+        return 0
+
+    if state.get("enabled"):
+        print(f"Already armed: {state.get('engagement')} / {state.get('session_id')} -- nothing to resume.")
+        return 0
+
+    root = WORKSPACE / config.get("output_root", ".evidence")
+    if args.session:
+        if "/" in args.session:
+            engagement, session_id = args.session.split("/", 1)
+        else:
+            session_id, engagement = args.session, args.engagement
+        if engagement:
+            session_dir = root / engagement / session_id
+        else:
+            matches = [(e, s, d) for e, s, d in _list_sessions(config) if s == session_id]
+            if not matches:
+                print(f"No session '{session_id}' found. Run `resume --list` to see what's available.", file=sys.stderr)
+                return 1
+            if len(matches) > 1:
+                print(f"Multiple sessions match '{session_id}':", file=sys.stderr)
+                for e, s, _d in matches:
+                    print(f"  {e}/{s}", file=sys.stderr)
+                print("Disambiguate with --engagement.", file=sys.stderr)
+                return 1
+            engagement, session_id, session_dir = matches[0]
+    else:
+        engagement, session_id = state.get("engagement"), state.get("session_id")
+        if not session_id:
+            print("No prior session in this workspace to resume. Try `resume --list` or `/evidence-on`.", file=sys.stderr)
+            return 1
+        session_dir = root / engagement / session_id
+
+    if not (session_dir / "log.jsonl").exists():
+        print(f"Session not found: {session_dir}", file=sys.stderr)
+        return 1
+
+    chain = core.verify_chain(session_dir)
+    if not chain["ok"]:
+        print(f"Refusing to resume -- chain BROKEN @ #{chain['break_at']} ({chain['reason']}). "
+              "This session's evidence has been altered since it was written.", file=sys.stderr)
+        return 1
+
+    records = list(core.iter_records(session_dir))
+    started_at = records[0]["ts"] if records else core.utc_now_iso()
+    output_dir = str(session_dir.relative_to(WORKSPACE)).replace("\\", "/")
+
+    core.save_state({
+        "enabled": True,
+        "engagement": engagement,
+        "session_id": session_id,
+        "started_at": started_at,
+        "output_dir": output_dir,
+        "capture": config.get("capture", {"bash": True, "mcp": True, "screenshots": True}),
+    }, WORKSPACE)
+    _ensure_gitignore()
+    _regen_map(session_dir)
+
+    print(f"Evidence capture RESUMED (workspace: {WORKSPACE}).")
+    print(f"  engagement: {engagement}")
+    print(f"  session:    {session_id}")
+    print(f"  steps so far: {len(records)}  chain: OK")
+    if (session_dir.parent / "manifest.json").exists():
+        print("  note: this session was previously sealed -- manifest.json will be refreshed on the next /evidence-off")
     return 0
 
 
@@ -198,6 +299,13 @@ def build_parser():
     s = sub.add_parser("on"); s.add_argument("engagement", nargs="?"); s.set_defaults(func=cmd_on)
     sub.add_parser("off").set_defaults(func=cmd_off)
     sub.add_parser("status").set_defaults(func=cmd_status)
+
+    s = sub.add_parser("resume")
+    s.add_argument("session", nargs="?",
+                   help="session id, or <engagement>/<session id>; omit to resume this workspace's last session")
+    s.add_argument("--engagement", default=None, help="disambiguate when the session id exists under more than one engagement")
+    s.add_argument("--list", action="store_true", help="list resumable sessions instead of resuming one")
+    s.set_defaults(func=cmd_resume)
 
     s = sub.add_parser("note")
     s.add_argument("seq", type=int)

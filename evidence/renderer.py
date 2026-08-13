@@ -330,6 +330,56 @@ def render_text(text: str, dest: Path, config: dict, caption: str = "", mode: st
     return dest
 
 
+def _clean_step_body(body: str) -> str:
+    """Turn the verbose steps/*.txt record into a clean terminal-style
+    transcript for the rendered PNG. steps/*.txt is written for full,
+    unredacted audit detail (metadata preamble, explicit section labels, empty
+    sections included) -- correct there, but that same detail is either
+    redundant with what the report already shows around the image (seq/tool/
+    timestamp as heading+caption; MCP tool_input as its own fenced JSON block
+    right above the image) or just clutter (an empty '--- stderr ---' label,
+    a '# desc:' annotation no real terminal would show). This drops all of
+    that, leaving either `$ command` + real output, or (for MCP) just the
+    response -- nothing else touches steps/*.txt, which stays exactly as
+    captured.
+    """
+    if body.startswith("# EVIDENCE STEP"):
+        idx = body.find("\n\n")
+        body = body[idx + 2:] if idx != -1 else body
+
+    if body.startswith("$ "):
+        # The command itself may span multiple lines (line-continuations,
+        # heredocs, ...) -- don't assume "first line == whole command". Split
+        # on the fixed "\n\n--- stdout ---" separator _render_step_text()
+        # always inserts between the command/desc header and the output
+        # sections instead; everything before it is the header, however many
+        # lines it spans.
+        so = body.find("\n\n--- stdout ---")
+        header, rest = (body, "") if so == -1 else (body[:so], body[so + len("\n\n--- stdout ---"):])
+
+        hlines = header.split("\n")
+        if hlines and hlines[-1].startswith("# desc:"):
+            hlines = hlines[:-1]
+        cmd = "\n".join(hlines).rstrip("\n")
+
+        stdout = stderr = ""
+        if rest:
+            se = rest.find("--- stderr ---")
+            stdout, stderr = (rest, "") if se == -1 else (rest[:se], rest[se + len("--- stderr ---"):])
+        parts = [cmd]
+        if stdout.strip():
+            parts.append(stdout.strip("\n"))
+        if stderr.strip():
+            parts.append(stderr.strip("\n"))
+        return "\n\n".join(parts)
+
+    if body.startswith("--- tool_input ---"):
+        idx = body.find("--- tool_response ---")
+        return body[idx + len("--- tool_response ---"):].strip("\n") if idx != -1 else body
+
+    return body
+
+
 def render_step(session_dir: Path, record: dict, config: dict, dest: Path) -> Path | None:
     """Render one step's command/output PNG from its steps/ text file."""
     session_dir = Path(session_dir)
@@ -341,8 +391,9 @@ def render_step(session_dir: Path, record: dict, config: dict, dest: Path) -> Pa
         return None
     body = src.read_text(encoding="utf-8", errors="replace")
     body = body.split("\n--- raw tool_response", 1)[0].rstrip()
+    body = _clean_step_body(body)
     seq = record.get("seq")
     short = record.get("tool_name", "").split("__")[-1]
-    caption = f"#{seq:04d}  {short}  ·  {record.get('ts', '')}"
+    caption = f"#{seq:08d}  {short}  ·  {record.get('ts', '')}"
     mode = "bash" if record.get("source") == "command" else "plain"
     return render_text(body, dest, config, caption=caption, mode=mode)

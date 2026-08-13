@@ -89,7 +89,7 @@ def build(session_dir: Path, config: dict | None = None) -> Path:
                 note_cell = _cell((f"[{attack}] " if attack else "") + note, 60)
                 art = r.get("artifact_path")
                 out.append(
-                    f"| {r.get('seq'):04d} | {_time_of(r.get('ts', ''))} "
+                    f"| {r.get('seq'):08d} | {_time_of(r.get('ts', ''))} "
                     f"| {_cell(r.get('tool_name', '').split('__')[-1], 40)} "
                     f"| [{art}]({art}) | {note_cell} |"
                 )
@@ -108,7 +108,7 @@ def build(session_dir: Path, config: dict | None = None) -> Path:
         art = r.get("artifact_path")
         art_cell = f"[{art}]({art})" if art else "—"
         out.append(
-            f"| {r.get('seq'):04d} | {_time_of(r.get('ts', ''))} | {_cell(r.get('source'), 8)} "
+            f"| {r.get('seq'):08d} | {_time_of(r.get('ts', ''))} | {_cell(r.get('source'), 8)} "
             f"| {_tool_label(r)} | {text_cell} | {art_cell} | {note_cell} |"
         )
     out.append("")

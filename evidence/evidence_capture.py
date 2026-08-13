@@ -84,7 +84,7 @@ def _response_to_text(resp) -> str:
 
 def _render_step_text(seq, source, tool_name, tool_input, tool_response, data) -> str:
     lines = [
-        f"# EVIDENCE STEP {seq:04d}",
+        f"# EVIDENCE STEP {seq:08d}",
         f"# tool:   {tool_name}  ({source})",
         f"# time:   {core.utc_now_iso()}",
         f"# cwd:    {data.get('cwd', '')}",
@@ -185,7 +185,7 @@ def main() -> int:
             seq = int(head.get("seq", 0)) + 1
             prev = head.get("record_sha256", core.GENESIS_HASH)
 
-            steps_name = f"{seq:04d}-{tool_short}.txt"
+            steps_name = f"{seq:08d}-{tool_short}.txt"
             steps_path = session_dir / "steps" / steps_name
             steps_path.parent.mkdir(parents=True, exist_ok=True)
             with open(steps_path, "w", encoding="utf-8") as fh:
@@ -197,7 +197,7 @@ def main() -> int:
             # tool-name allowlist).
             response_json_name = None
             if source == "mcp":
-                response_json_name = f"{seq:04d}-{tool_short}.json"
+                response_json_name = f"{seq:08d}-{tool_short}.json"
                 with open(session_dir / "steps" / response_json_name, "w", encoding="utf-8") as fh:
                     json.dump(_strip_and_clip(tool_response), fh, ensure_ascii=False)
 

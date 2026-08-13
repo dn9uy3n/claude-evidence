@@ -177,7 +177,7 @@ def harvest(tool_name, tool_input, tool_response, session_dir: Path, seq: int,
 
     artifacts_dir = Path(session_dir) / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
-    dest_base = artifacts_dir / f"{seq:04d}-{tool_short}"
+    dest_base = artifacts_dir / f"{seq:08d}-{tool_short}"
 
     dest = None
     if mode in ("base64", "auto"):

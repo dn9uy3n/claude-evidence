@@ -1,8 +1,11 @@
 """Assemble a Markdown evidence report from log.jsonl + annotations.json.
 
 Header carries engagement, time range, and the manifest / chain-head hash the
-client can verify. Each step gets: the command (or MCP input), a rendered PNG of
-the output, any harvested real screenshot, note, and ATT&CK technique.
+client can verify. Each step gets: the command (or MCP input), a note and ATT&CK
+technique if annotated, and its main visual -- in priority order, a structured
+table (for tabular MCP responses), else a harvested real screenshot (Playwright/
+Windows-MCP/...) if one exists for the step, else a rendered PNG of the raw
+output. A real screenshot is never regenerated as a PNG-of-text; it's shown as-is.
 
 If Pillow/Pygments are unavailable the report still builds — output falls back to
 text code fences instead of rendered PNGs.
@@ -95,7 +98,7 @@ def build(session_dir: Path, config: dict, fmt: str = "md") -> Path:
                 table_md = None
 
         tag = "  ·  📊 table" if table_md else ""
-        out.append(f"## Step {seq:04d} — `{short}`  ({r.get('source')}){tag}")
+        out.append(f"## Step {seq:08d} — `{short}`  ({r.get('source')}){tag}")
         out.append(f"_{r.get('ts', '')}_")
         out.append("")
         if note or attack:
@@ -113,32 +116,37 @@ def build(session_dir: Path, config: dict, fmt: str = "md") -> Path:
             out.append(_fence(json.dumps(ti, ensure_ascii=False, indent=2), "json"))
         out.append("")
 
+        art = r.get("artifact_path")
+        has_real_shot = bool(art) and r.get("artifact_kind") == "real_screenshot"
+
         if table_md:
             out.append(table_md)
+            out.append("")
+        elif has_real_shot:
+            pass  # a real screenshot (Playwright/Windows-MCP/...) exists for this
+            # step -- shown below; no point re-rendering a PNG from the step text.
         else:
             # rendered output PNG (or text fallback)
             png_ref = None
             if _RENDER:
                 try:
-                    dest = img_dir / f"{seq:04d}-step.png"
+                    dest = img_dir / f"{seq:08d}-step.png"
                     if renderer.render_step(session_dir, r, config, dest):
                         png_ref = f"img/{dest.name}"
                 except Exception:
                     png_ref = None
             if png_ref:
-                out.append(f"![step {seq:04d} output]({png_ref})")
+                out.append(f"![step {seq:08d} output]({png_ref})")
             else:
                 src = session_dir / (r.get("text_path") or "")
                 if src.exists():
                     body = src.read_text(encoding="utf-8", errors="replace").split("\n--- raw tool_response", 1)[0]
                     out.append(_fence(body[:6000]))
-        out.append("")
+            out.append("")
 
-        # real screenshot
-        art = r.get("artifact_path")
         if art:
             out.append(f"**Screenshot** (`{r.get('artifact_sha256', '')[:16]}…`):")
-            out.append(f"![screenshot {seq:04d}](../{art})")
+            out.append(f"![screenshot {seq:08d}](../{art})")
             out.append("")
 
         out.append(f"↳ raw: [`{r.get('text_path')}`](../{r.get('text_path')})")
